@@ -1,9 +1,18 @@
+import json
+import os
 import poplib
 from email.parser import Parser
 from email.header import decode_header
 from email.utils import parseaddr
 
+import requests
+import schedule
+
 import config
+
+mail_url = config.MAIL_URL
+mail_text = ""
+mail_bot_url = config.MAIL_WEB_HOOK
 
 
 # 获取邮件的信息
@@ -26,7 +35,7 @@ def get_mail_info(msg, mail_text, indent=0):
     if msg.is_multipart():
         parts = msg.get_payload()
         for n, part in enumerate(parts):
-            mail_text += '%spart %s' % ('  ' * indent, n) + "\n"
+            # mail_text += '%spart %s' % ('  ' * indent, n) + "\n"
             mail_text += '%s--------------------' % ('  ' * indent) + '\n'
             # print('%spart %s' % ('  ' * indent, n))
             # print('%s--------------------' % ('  ' * indent))
@@ -115,5 +124,62 @@ def mail():
     return mail_text
 
 
-if __name__ == '__main__':
-    mail()
+def mail_bot_push(headers):
+    mail_text = "**邮箱中最新的一封邮件为：**\n" + mail()
+    mail_text = os.linesep.join([s for s in mail_text.splitlines() if s])  # 删除多余空行
+
+    mail_text_message = {
+        "msg_type": "interactive",
+        "card": {
+            "config": {
+                "wide_screen_mode": True
+            },
+            "header": {
+                "template": "orange",
+                "title": {
+                    "content": " 📧 邮件提醒",
+                    "tag": "plain_text"
+                }
+            },
+            "i18n_elements": {
+                "zh_cn": [
+                    {
+                        "tag": "div",
+                        "text": {
+                            "content": mail_text,
+                            "tag": "lark_md"
+                        }
+                    },
+                    {
+                        "actions": [
+                            {
+                                "tag": "button",
+                                "text": {
+                                    "content": "进入邮箱",
+                                    "tag": "plain_text"
+                                },
+                                "type": "primary",
+                                "url": mail_url
+                            }, {
+                                "tag": "button",
+                                "text": {
+                                    "content": "好的",
+                                    "tag": "plain_text"
+                                },
+                                "type": "default",
+                                "url": ""
+                            }
+                        ],
+                        "tag": "action"
+                    }
+                ]
+            }
+        }
+    }
+
+    response = requests.request("POST", mail_bot_url, headers=headers, data=json.dumps(mail_text_message))
+    print(response.text)
+
+
+def mail_bot_repeat(headers):
+    schedule.every().day.at("17:30").do(mail_bot_push, headers)
